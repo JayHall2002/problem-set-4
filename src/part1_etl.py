@@ -6,6 +6,7 @@ PART 1: ETL
 
 import os
 import pandas as pd
+import ssl
 
 def create_directories(directories):
     """
@@ -30,11 +31,25 @@ def extract_transform():
         - `charge_counts_by_offense`: A dataframe with counts of charges aggregated by both charge degree and offense category
     """
     # Extracts arrest data CSVs into dataframes
+    # Need to work around ssl certifcates, since this is a contained project I will disable it
+    ssl._create_default_https_context = ssl._create_unverified_context
+
     pred_universe = pd.read_csv('https://www.dropbox.com/scl/fi/a2tpqpvkdc8n6advvkpt7/universe_lab9.csv?rlkey=839vsc25njgfftzakr34w2070&dl=1')
     arrest_events = pd.read_csv('https://www.dropbox.com/scl/fi/n47jt4va049gh2o4bysjm/arrest_events_lab9.csv?rlkey=u66usya2xjgf8gk2acq7afk7m&dl=1')
 
     # Creates two additional dataframes using groupbys
     charge_counts = arrest_events.groupby(['charge_degree']).size().reset_index(name='count')
     charge_counts_by_offense = arrest_events.groupby(['charge_degree', 'offense_category']).size().reset_index(name='count')
-    
-    return pred_universe, arrest_events, charge_counts, charge_counts_by_offense
+
+    # Create an additional Dataframe called 'felony_charge' using groupbys
+    felony_charge = arrest_events.groupby('arrest_id').apply(
+        lambda x: pd.Series({'has_felony_charge': (x['charge_degree'] == 'Felony').any()})).reset_index()
+
+    pred_universe = pred_universe.merge(felony_charge, on='arrest_id', how='left')
+
+    # Merge felony_charge with pred_universe
+    merged_df = pd.merge(pred_universe, felony_charge, on='arrest_id')
+
+    return pred_universe, arrest_events, charge_counts, charge_counts_by_offense, felony_charge, merged_df
+
+
